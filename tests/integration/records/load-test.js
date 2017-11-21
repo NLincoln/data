@@ -6,18 +6,21 @@ import {module, test} from 'qunit';
 import DS from 'ember-data';
 
 var hasMany = DS.hasMany;
-var Post, Comment, env;
+var belongsTo = DS.belongsTo;
+var Post, Comment, Author, env;
 var run = Ember.run;
 
 module("integration/load - Loading Records", {
   beforeEach() {
     Post = DS.Model.extend({
-      comments: hasMany({ async: true })
+      comments: hasMany({ async: true }),
+      author: belongsTo({ async: true }),
     });
 
     Comment = DS.Model.extend();
+    Author = DS.Model.extend();
 
-    env = setupStore({ post: Post, comment: Comment });
+    env = setupStore({ post: Post, comment: Comment, author: Author });
   },
 
   afterEach() {
@@ -40,4 +43,39 @@ test("When loading a record fails, the isLoading is set to false", function(asse
       assert.equal(post.get("isLoading"), false, "post is not loading anymore");
     }));
   });
+});
+
+test('When a relationship fails to load we dont do Bad Things', function(assert) {
+  env.adapter.findBelongsTo = (store, snapshot, url) => {
+    return Ember.RSVP.reject();
+  };
+  env.adapter.findRecord = () => Ember.RSVP.reject();
+  return run(() => {
+    env.store.push({
+      data: {
+        type: 'post',
+        id: '1',
+        relationships: {
+          comments: {
+            data: []
+          },
+          author: {
+            data: {
+              id: '2',
+              type: 'author'
+            }
+          }
+        }
+      }
+    });
+    const post = env.store.peekRecord('post', 1)
+    return post.get('author')
+    .then(() => {
+      assert.ok(false, 'Should not be called');
+    })
+    .catch(() => {
+      assert.equal(post.get('author.id'), '2', 'author id should still be 2');
+    });
+  })
+
 });
